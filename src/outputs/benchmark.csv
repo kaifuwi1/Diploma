@@ -1,0 +1,9 @@
+model,device,ms_per_article
+baseline,cpu,262.67
+baseline,cuda,5.89
+bigru,cpu,262.36
+bigru,cuda,6.69
+cnn,cpu,248.41
+cnn,cuda,6.56
+hybrid,cpu,248.81
+hybrid,cuda,6.46
