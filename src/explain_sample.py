@@ -48,7 +48,7 @@ out_dir = pathlib.Path("/content/drive/MyDrive/FakeNewNet/src/outputs")
 out_dir.mkdir(parents=True, exist_ok=True)
 print("Result:", "fake" if prob_fake > 50 else "real", '\n')
 
-make_wordcloud(tokens_imp, out_dir / "cloud.png")           # only fake-tokens
-html_highlight(tokens_imp, out_dir / "explain.html", prob_fake=prob_fake)
+make_wordcloud(tokens_imp, out_dir / f"{model_name}cloud.png")           # only fake-tokens
+html_highlight(tokens_imp, out_dir / f"{model_name}explain.html", prob_fake=prob_fake)
 
 print(f"✅  Outputs saved to {out_dir}\n    cloud.png\n    explain.html")
