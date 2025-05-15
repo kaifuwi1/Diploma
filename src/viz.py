@@ -73,6 +73,10 @@ def get_token_importance(model,
     text = clean_text(text)
     model.to(device).eval()
 
+    # --- временно переводим в train() для GRU, потом вернём как было ----
+    was_training = model.training            # True / False
+    model.train()                            # нужен для cuDNN-GRU backward
+
     enc = tokenizer(
         text, truncation=True, padding="max_length",
         max_length=max_len, return_tensors="pt"
@@ -86,17 +90,37 @@ def get_token_importance(model,
     else:
         raise RuntimeError("embeddings-layer not found")
 
-    def forward_fn(input_ids, attention_mask):
-        if "hand_feats" in model.forward.__code__.co_varnames:
+    def forward_fn(input_ids: torch.Tensor, attention_mask: torch.Tensor):
+        """
+        Универсальная обёртка для LayerIntegratedGradients.
+        Передаём ровно те дополнительные тензоры, которые
+        реально предусмотрены сигнатурой модели.
+
+        Возвращаем логиты класса «fake» (index 1).
+        """
+        sig = model.forward.__code__.co_varnames
+        kwargs = dict(input_ids=input_ids,
+                      attention_mask=attention_mask)
+
+        if "hand_feats" in sig:
             B = input_ids.size(0)
-            hand = torch.zeros(B, HAND_FDIM, device=input_ids.device)
-            sent = torch.zeros(B, 1,           device=input_ids.device)
-            ne   = torch.zeros(B, 1,           device=input_ids.device)
-            logits = model(input_ids, attention_mask,
-                           hand_feats=hand, sentiment=sent, num_ent=ne)
-        else:
-            logits = model(input_ids, attention_mask)
-        return logits[:, 1]          # logit fake
+            kwargs["hand_feats"] = torch.zeros(B, HAND_FDIM,
+                                              device=input_ids.device)
+
+        if "sentiment" in sig:
+            B = input_ids.size(0)
+            kwargs["sentiment"] = torch.zeros(B, 1,
+                                              device=input_ids.device)
+
+        if "num_ent" in sig:
+            B = input_ids.size(0)
+            kwargs["num_ent"] = torch.zeros(B, 1,
+                                            device=input_ids.device)
+
+        logits = model(**kwargs)          # [B, 2]
+        return logits[:, 1]               # logit(fake)
+
+
 
     lig = LayerIntegratedGradients(forward_fn, embed_layer)
     with torch.enable_grad():
@@ -109,6 +133,12 @@ def get_token_importance(model,
 
     scores = attributions.sum(dim=-1).squeeze(0).cpu().numpy()
     tokens = tokenizer.convert_ids_to_tokens(enc["input_ids"].squeeze(0))
+
+        # … после вычисления scores / tokens …
+    # -------------------------------------
+    if not was_training:
+        model.eval()     # возвращаем eval, если так было изначально
+
 
     # drop [CLS]/[SEP]/[PAD]
     filt = [(t, s) for t, s in zip(tokens, scores)
